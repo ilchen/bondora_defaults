@@ -10,7 +10,7 @@ now = datetime.date.today()
 # Explanation of individual columns can be found at: https://www.bondora.com/en/public-reports
 BONDORA_URL = "https://www.bondora.com/marketing/media/LoanData.zip"
 
-def cleanDf(df):
+def clean_df(df):
     df = df.drop(['ReportAsOfEOD', 'ListedOnUTC', 'BidsPortfolioManager', 'BiddingStartedOn', 'BidsApi', 'BidsManual',
              'LoanApplicationStartedDate',
              'ApplicationSignedHour', 'ApplicationSignedWeekday', 'Rating_V0', 'Rating_V1', 'Rating_V2'], axis=1)
@@ -20,7 +20,7 @@ def cleanDf(df):
     #df.loc[:, 'ContractEndDate'] = pd.to_datetime(df['ContractEndDate'])
     return df
 
-def extractNeededColumns(df):
+def extract_needed_columns(df):
     df = df[['Rating', 'ProbabilityOfDefault', 'Country', 'LoanDate', 'LoanDuration', 'DefaultDate', 'ContractEndDate']]
     df = df[df['Country'] != 'SK']
     df['ttd'] = df.DefaultDate.dt.to_period('M') - df.LoanDate.dt.to_period('M')
@@ -36,7 +36,7 @@ def extractNeededColumns(df):
     return  df
 
 
-def printProbabilities(df, country, start_year, max_duration=60, ratings=('AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR')):
+def print_apriori_probabilities(df, country, start_year, max_duration=60, ratings=('AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR')):
     ''' This function analyses Bondora's own a priory default intensities that they calculated when pricing a loan
     :param df: a DataFrame representing Bondora's loan portfolio
     :param country: the country loans issued in which to analyze,
@@ -63,14 +63,15 @@ def printProbabilities(df, country, start_year, max_duration=60, ratings=('AA', 
             k = k.reindex(new_idx)
     with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(k)
 
-def calculateBuckets(df, country, start_year):
+def calculate_default_intensities_buckets(df, country, start_year):
     ''' This function calculates the actual default intensities per per country, rating, year of issuance, and duration
     
     :param df: a DataFrame representing Bondora's loan portfolio
     :param country: the country loans issued in which to analyze,
             one of 'EE' for Estonia, 'FI' for Finland, 'ES' for Spain
     :param start_year: will only inlcude loans originated in this year or later into analysis
-    :return: None
+    :return: a DataFrame containing default intensities and the number of loans from which they were calculated.
+            The DataFrame is indexed by Rating, loan issue year, and duration.
     '''
     # Let's tackle Estonia first
     grp_ee = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country) & (df.ttd != -9223372036854775808)][
@@ -149,13 +150,25 @@ def default_incidence(s):
     return num_defaulted / total_num, num_defaulted, total_num
 
 def check_probability_of_default(df, country):
+    ''' This function compares Bondora's a priori defaul probabilities with actual frequencies of default. It prints
+    a Series object whose values are tuples containing 3 values (Default frequency, Number loans defaulted, Total number of loans)
+    :param df: a DataFrame representing Bondora's loan portfolio
+    :param country: the country loans issued in which to analyze,
+            one of 'EE' for Estonia, 'FI' for Finland, 'ES' for Spain
+    :return: None 
+    '''
     categories = pd.cut(df[(df.Country == country)].ProbabilityOfDefault, [x / 1000. for x in range(0, 1001, 25)])
     grouped = df[(df.Country == country)]['DefaultDate'].isnull().groupby(
         [categories, df['Rating'], df['LoanDate'].dt.year])
     k = grouped.agg(default_incidence)
-    k.name = 'ProbabilityOfDefaultAccuracy'
-    new_idx = k.index.set_levels(['AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR'], 1)
-    k = k.reindex(new_idx)
+    k.name = '(Default frequency, Number defaulted, Total number of loans)'
+    if len({'AA', 'A'} & set(k.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
+        loc1, loc2 = k.index.levels[0].get_loc('AA'), k.index.levels[0].get_loc('A')
+        if loc1 > loc2:
+            idxes = list(k.index.levels[0])
+            idxes[loc1], idxes[loc2] = idxes[loc2], idxes[loc1]
+            new_idx = k.index.set_levels(idxes, 0)
+            k = k.reindex(new_idx)
     with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(k)
 
 with requests.get(BONDORA_URL) as s:
@@ -165,17 +178,17 @@ with requests.get(BONDORA_URL) as s:
 
 # df = pd.read_csv('~/Downloads/LoanData-3.csv', index_col=['LoanId'],
 #                  infer_datetime_format=True, parse_dates=['LoanDate', 'DefaultDate', 'ContractEndDate'])
-df = cleanDf(df)
-df = extractNeededColumns(df)
+df = clean_df(df)
+df = extract_needed_columns(df)
 
 # Analysis of Bondora's own a priori probabilities of default for different loans
-printProbabilities(df, 'EE', 2015)
-printProbabilities(df, 'EE', 2018, ratings=['AA', 'A'])
-printProbabilities(df, 'EE', 2018, ratings=['AA', 'A'], max_duration=12)
+print_apriori_probabilities(df, 'EE', 2015)
+print_apriori_probabilities(df, 'EE', 2018, ratings=['AA', 'A'])
+print_apriori_probabilities(df, 'EE', 2018, ratings=['AA', 'A'], max_duration=12)
 
 # Deriving probabilities of default based on actual defaults
-ee = calculateBuckets(df, 'EE', 2015)
-fi = calculateBuckets(df, 'FI', 2015)
+ee = calculate_default_intensities_buckets(df, 'EE', 2015)
+fi = calculate_default_intensities_buckets(df, 'FI', 2015)
 
 # Analysis of derived default intensities
 ee.loc[(['AA','A','B'], [2017,2018]), :]
