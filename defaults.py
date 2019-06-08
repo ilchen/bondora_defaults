@@ -35,19 +35,43 @@ def extractNeededColumns(df):
     df['tt'] = np.where(df.ttce >= 0, np.where(df.ttn < df.ttce, df.ttn, df.ttce), df.ttn)
     return  df
 
-def printProbabilities(df, country, start_year, duration=60, ratings=('AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR')):
-    grouped3 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) &(df['Country'] == country) & (df['LoanDuration'] <= duration)]['ProbabilityOfDefault'].groupby(
-        [df['Rating'], df['LoanDate'].dt.year])
+
+def printProbabilities(df, country, start_year, max_duration=60, ratings=('AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR')):
+    ''' This function analyses Bondora's own a priory default intensities that they calculated when pricing a loan
+    :param df: a DataFrame representing Bondora's loan portfolio
+    :param country: the country loans issued in which to analyze,
+            one of 'EE' for Estonia, 'FI' for Finland, 'ES' for Spain
+    :param start_year: will only inlcude loans originated in this year or later into analysis
+    :param max_duration: only include loans whose duration is not greater than this
+    :param ratings: a list specifying what ratings to include
+    :return: None
+    '''
+    grouped3 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
+                  & (df['LoanDuration'] <= max_duration)]['ProbabilityOfDefault'].groupby([df['Rating'], df['LoanDate'].dt.year])
     # grouped4 = df[df['LoanDate'].dt.year > 2015]['ProbabilityOfDefault'].groupby(
     #     [df['Rating'], df['Country'], df['LoanDate'].dt.year, df['LoanDuration']])
     # grouped4.agg(['min', 'median', 'mean', 'max', 'std'])
     k = grouped3.agg(['min', 'median', 'mean', 'max', 'std'])
     k.columns.name = 'ProbabilityOfDefault'
-    new_idx = k.index.set_levels(['AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR'], 0)
-    k = k.reindex(new_idx)
+
+    if len({'AA', 'A'} & set(k.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
+        loc1, loc2 = k.index.levels[0].get_loc('AA'), k.index.levels[0].get_loc('A')
+        if loc1 > loc2:
+            idxes = list(k.index.levels[0])
+            idxes[loc1], idxes[loc2] = idxes[loc2], idxes[loc1]
+            new_idx = k.index.set_levels(idxes, 0)
+            k = k.reindex(new_idx)
     with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(k)
 
 def calculateBuckets(df, country, start_year):
+    ''' This function calculates the actual default intensities per per country, rating, year of issuance, and duration
+    
+    :param df: a DataFrame representing Bondora's loan portfolio
+    :param country: the country loans issued in which to analyze,
+            one of 'EE' for Estonia, 'FI' for Finland, 'ES' for Spain
+    :param start_year: will only inlcude loans originated in this year or later into analysis
+    :return: None
+    '''
     # Let's tackle Estonia first
     grp_ee = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country) & (df.ttd != -9223372036854775808)][
         'ProbabilityOfDefault'].groupby([df['ttd'], df['Rating'], df['LoanDate'].dt.year, df['LoanDuration']])
@@ -108,8 +132,14 @@ def calculateBuckets(df, country, start_year):
     annual_dflt_intensity = pd.concat([annual_dflt_intensity, ee_counts], axis = 1)
     annual_dflt_intensity.columns = ['Annual Default Intensity', '#']
 
-    new_idx = annual_dflt_intensity.index.set_levels(['AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR'], 0)
-    annual_dflt_intensity = annual_dflt_intensity.reindex(new_idx)
+    if len({'AA', 'A'} & set(annual_dflt_intensity.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
+        loc1, loc2 = annual_dflt_intensity.index.levels[0].get_loc('AA'), annual_dflt_intensity.index.levels[0].get_loc('A')
+        if loc1 > loc2:
+            idxes = list(annual_dflt_intensity.index.levels[0])
+            idxes[loc1], idxes[loc2] = idxes[loc2], idxes[loc1]
+            new_idx = annual_dflt_intensity.index.set_levels(idxes, 0)
+            annual_dflt_intensity = annual_dflt_intensity.reindex(new_idx)
+
     annual_dflt_intensity['#'] = annual_dflt_intensity['#'].fillna(0).astype('int')
     return  annual_dflt_intensity
 
@@ -141,15 +171,12 @@ df = extractNeededColumns(df)
 # Analysis of Bondora's own a priori probabilities of default for different loans
 printProbabilities(df, 'EE', 2015)
 printProbabilities(df, 'EE', 2018, ratings=['AA', 'A'])
-printProbabilities(df, 'EE', 2018, ratings=['AA', 'A'], duration=12)
+printProbabilities(df, 'EE', 2018, ratings=['AA', 'A'], max_duration=12)
 
 # Deriving probabilities of default based on actual defaults
 ee = calculateBuckets(df, 'EE', 2015)
 fi = calculateBuckets(df, 'FI', 2015)
+
 # Analysis of derived default intensities
 ee.loc[(['AA','A','B'], [2017,2018]), :]
 ee['Annual Default Intensity'].loc['AA':'B', 2017:2018]
-
-
-
-
