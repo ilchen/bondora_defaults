@@ -150,20 +150,6 @@ fi = calculateBuckets(df, 'FI', 2015)
 ee.loc[(['AA','A','B'], [2017,2018]), :]
 ee['Annual Default Intensity'].loc['AA':'B', 2017:2018]
 
-# df2 = pd.read_excel('/Users/ilchen/Downloads/InvestmentsListV2_20180817234017.xlsx',
-#                     infer_datetime_format=True, parse_dates=['LoanDate', 'DefaultDate', 'ContractEndDate'])
-# df2 = df2.set_index('LoanId')
-# df2 = df2[~df2.index.duplicated(keep='first')]
-# idx = df.index.intersection(df2.index.unique().map(lambda x: x.upper()))
-#
-# df2 = df.loc[idx]
-#
-# categories = pd.cut(df2[(df2.Country == 'EE')].ProbabilityOfDefault, [x / 1000. for x in range(0, 1001, 25)])
-# grouped = df2[(df2.Country == 'EE')].groupby([categories, df['Rating'], df['LoanDate'].dt.year])
-# df2[(df2.Country == 'EE')]['DefaultDate'].isnull()
-# #df2[(df2.ProbabilityOfDefault > .1) & (df2.ttd != -9223372036854775808) & (df['Rating'] == 'AA')],\
-# #    [0., .025, .05, .075, .1, .125, .15, .175, .2, .225, .25, .275]
-# grouped = df2[(df2.Country == 'EE')]['DefaultDate'].isnull().groupby([categories, df['Rating'], df['LoanDate'].dt.year])
 
 
 
