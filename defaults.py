@@ -21,15 +21,19 @@ def clean_df(df):
     return df
 
 def extract_needed_columns(df):
+    from pandas.tseries.offsets import MonthEnd
+    from operator import attrgetter
     df = df[['Rating', 'ProbabilityOfDefault', 'Country', 'LoanDate', 'LoanDuration', 'DefaultDate', 'ContractEndDate']]
     df = df[df['Country'] != 'SK']
-    df['ttd'] = df.DefaultDate.dt.to_period('M') - df.LoanDate.dt.to_period('M')
-    df.ttd = df.ttd.astype('int')
-    df['ttce'] = df.ContractEndDate.dt.to_period('M') - df.LoanDate.dt.to_period('M')
-    df.ttce = df.ttce.astype('int')
+    df['ttd'] = (df.DefaultDate.dt.to_period('M') - df.LoanDate.dt.to_period('M'))
+    df.ttd.fillna(value=MonthEnd(-1), inplace=True)
+    df.ttd = df.ttd.apply(attrgetter('n')).astype('int')
+    df['ttce'] = (df.ContractEndDate.dt.to_period('M') - df.LoanDate.dt.to_period('M'))
+    df.ttce.fillna(value=MonthEnd(-1), inplace=True)
+    df.ttce = df.ttce.apply(attrgetter('n')).astype('int')
     df['ttn'] = now # - datetime.timedelta(days=12)
     df.ttn = df.ttn.apply(pd.to_datetime)
-    df['ttn'] = df.ttn.dt.to_period('M') - df.LoanDate.dt.to_period('M')
+    df['ttn'] = (df.ttn.dt.to_period('M') - df.LoanDate.dt.to_period('M')).apply(attrgetter('n'))
     df.ttn = df.ttn.astype('int')
     df = df[df.ttn >= 3]
     df['tt'] = np.where(df.ttce >= 0, np.where(df.ttn < df.ttce, df.ttn, df.ttce), df.ttn)
@@ -74,12 +78,12 @@ def calculate_default_intensities_buckets(df, country, start_year):
             The DataFrame is indexed by Rating, loan issue year, and duration.
     '''
     # Let's tackle Estonia first
-    grp_ee = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country) & (df.ttd != -9223372036854775808)][
+    grp_ee = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country) & (df.ttd != -1)][
         'ProbabilityOfDefault'].groupby([df['ttd'], df['Rating'], df['LoanDate'].dt.year, df['LoanDuration']])
     grp_ee_dflt = grp_ee.count()
     defaulted_maturities = grp_ee_dflt.index.get_level_values(0)
 
-    grp_ee_surv = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country) & (df.ttd == -9223372036854775808)][
+    grp_ee_surv = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country) & (df.ttd == -1)][
         'ProbabilityOfDefault'].groupby([df['tt'], df['Rating'], df['LoanDate'].dt.year, df['LoanDuration']])
     grp_ee_surv_cnt = grp_ee_surv.count()
     maturities = list(set(grp_ee_surv_cnt.index.get_level_values(0)))
