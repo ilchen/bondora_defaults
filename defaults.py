@@ -52,20 +52,21 @@ def print_apriori_probabilities(df, country, start_year, max_duration=60, rating
     '''
     grouped3 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
                   & (df['LoanDuration'] <= max_duration)]['ProbabilityOfDefault'].groupby([df['Rating'], df['LoanDate'].dt.year])
-    # grouped4 = df[df['LoanDate'].dt.year > 2015]['ProbabilityOfDefault'].groupby(
-    #     [df['Rating'], df['Country'], df['LoanDate'].dt.year, df['LoanDuration']])
-    # grouped4.agg(['min', 'median', 'mean', 'max', 'std'])
-    k = grouped3.agg(['min', 'median', 'mean', 'max', 'std'])
-    k.columns.name = 'ProbabilityOfDefault'
+    grouped4 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
+                  & (df['LoanDuration'] <= max_duration)]['ProbabilityOfDefault'].groupby([df['Rating'], df['LoanDate'].dt.year, df['LoanDuration']])
 
-    if len({'AA', 'A'} & set(k.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
-        loc1, loc2 = k.index.levels[0].get_loc('AA'), k.index.levels[0].get_loc('A')
-        if loc1 > loc2:
-            idxes = list(k.index.levels[0])
-            idxes[loc1], idxes[loc2] = idxes[loc2], idxes[loc1]
-            new_idx = k.index.set_levels(idxes, 0)
-            k = k.reindex(new_idx)
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(k)
+    for group in [grouped3, grouped4]:
+        k = group.agg(['min', 'median', 'mean', 'max', 'std'])
+        k.columns.name = 'ProbabilityOfDefault'
+
+        if len({'AA', 'A'} & set(k.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
+            loc1, loc2 = k.index.levels[0].get_loc('AA'), k.index.levels[0].get_loc('A')
+            if loc1 > loc2:
+                idxes = list(k.index.levels[0])
+                idxes[loc1], idxes[loc2] = idxes[loc2], idxes[loc1]
+                new_idx = k.index.set_levels(idxes, 0)
+                k = k.reindex(new_idx)
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(k)
 
 def calculate_default_intensities_buckets(df, country, start_year):
     ''' This function calculates the actual default intensities per per country, rating, year of issuance, and duration
