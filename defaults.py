@@ -67,6 +67,7 @@ def print_apriori_probabilities(df, country, start_year, max_duration=60, rating
                 new_idx = k.index.set_levels(idxes, 0)
                 k = k.reindex(new_idx)
         with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(k)
+    return  grouped4.mean()
 
 def calculate_default_intensities_buckets(df, country, start_year):
     ''' This function calculates the actual default intensities per per country, rating, year of issuance, and duration
@@ -198,3 +199,12 @@ fi = calculate_default_intensities_buckets(df, 'FI', 2015)
 # Analysis of derived default intensities
 ee.loc[(['AA','A','B'], [2017,2018]), :]
 ee['Annual Default Intensity'].loc['AA':'B', 2017:2018]
+
+apr_ee = print_apriori_probabilities(df, 'EE', 2017, ratings=['AA', 'A', 'B'])
+apostr_ee = ee.loc[(['AA','A', 'B'], [2017,2018,2019]), :]
+combined_ee = pd.concat([apr_ee, apostr_ee], axis=1)
+combined_ee['underestimate of default intensity']=combined_ee['Annual Default Intensity']-combined_ee['ProbabilityOfDefault']
+combined_ee.loc['AA', 'underestimate of default intensity'].plot(grid=True, title='Estonia AA: underestimates of default intensity')
+combined_ee.loc['A', 'underestimate of default intensity'].plot(grid=True, title='Estonia A: underestimates of default intensity')
+combined_ee.loc['B', 'underestimate of default intensity'].plot(grid=True, title='Estonia B: underestimates of default intensity')
+combined_ee.loc[['AA', 'A'], 'underestimate of default intensity']
