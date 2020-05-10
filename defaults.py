@@ -198,7 +198,7 @@ fi = calculate_default_intensities_buckets(df, 'FI', 2015)
 
 # Analysis of derived default intensities
 ee.loc[(['AA','A','B'], [2017,2018]), :]
-ee['Annual Default Intensity'].loc['AA':'B', 2017:2018]
+ee['Annual Default Intensity'].loc[['AA','A','B'], [2017,2018]]
 
 apr_ee = print_apriori_probabilities(df, 'EE', 2017, ratings=['AA', 'A', 'B'])
 apostr_ee = ee.loc[(['AA','A', 'B'], [2017,2018,2019]), :]
@@ -208,3 +208,12 @@ combined_ee.loc['AA', 'underestimate of default intensity'].plot(grid=True, titl
 combined_ee.loc['A', 'underestimate of default intensity'].plot(grid=True, title='Estonia A: underestimates of default intensity')
 combined_ee.loc['B', 'underestimate of default intensity'].plot(grid=True, title='Estonia B: underestimates of default intensity')
 combined_ee.loc[['AA', 'A'], 'underestimate of default intensity']
+
+apr_fi = print_apriori_probabilities(df, 'FI', 2017, ratings=['AA', 'A', 'B'])
+apostr_fi = fi.loc[(['AA','A', 'B'], [2017,2018,2019]), :]
+combined_fi = pd.concat([apr_fi, apostr_fi], axis=1)
+combined_fi['underestimate of default intensity']=combined_fi['Annual Default Intensity']-combined_fi['ProbabilityOfDefault']
+combined_fi.loc['AA', 'underestimate of default intensity'].plot(grid=True, title='Finland AA: underestimates of default intensity')
+combined_fi.loc['A', 'underestimate of default intensity'].plot(grid=True, title='Finland A: underestimates of default intensity')
+combined_fi.loc['B', 'underestimate of default intensity'].plot(grid=True, title='Finland B: underestimates of default intensity')
+combined_fi.loc[['AA', 'A'], 'underestimate of default intensity']
