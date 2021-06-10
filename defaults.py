@@ -23,20 +23,23 @@ def clean_df(df):
 def extract_needed_columns(df):
     from pandas.tseries.offsets import MonthEnd
     from operator import attrgetter
-    df = df[['Rating', 'ProbabilityOfDefault', 'Country', 'LoanDate', 'LoanDuration', 'DefaultDate', 'ContractEndDate']]
+    df['Recovered'] = df.PrincipalRecovery + df.InterestRecovery #- df.PrincipalDebtServicingCost - df.InterestAndPenaltyDebtServicingCost
+    df = df[['Rating', 'ProbabilityOfDefault', 'Country', 'LoanDate', 'LoanDuration', 'DefaultDate', 'ContractEndDate',
+             'EAD1', 'Recovered']] # PlannedPrincipalPostDefault
     df = df[df['Country'] != 'SK']
-    df['ttd'] = (df.DefaultDate.dt.to_period('M') - df.LoanDate.dt.to_period('M'))
+    df['ttd'] = (df.DefaultDate.dt.to_period('M') - df.LoanDate.dt.to_period('M'))  # Time to contract's default, i.e. how long the loan was performing. -1 if still current
     df.ttd.fillna(value=MonthEnd(-1), inplace=True)
     df.ttd = df.ttd.apply(attrgetter('n')).astype('int')
-    df['ttce'] = (df.ContractEndDate.dt.to_period('M') - df.LoanDate.dt.to_period('M'))
+    df['ttce'] = (df.ContractEndDate.dt.to_period('M') - df.LoanDate.dt.to_period('M')) # Time to contract's end date, i.e. the actual maturity
     df.ttce.fillna(value=MonthEnd(-1), inplace=True)
     df.ttce = df.ttce.apply(attrgetter('n')).astype('int')
     df['ttn'] = now # - datetime.timedelta(days=12)
     df.ttn = df.ttn.apply(pd.to_datetime)
-    df['ttn'] = (df.ttn.dt.to_period('M') - df.LoanDate.dt.to_period('M')).apply(attrgetter('n'))
+    df['ttn'] = (df.ttn.dt.to_period('M') - df.LoanDate.dt.to_period('M')).apply(attrgetter('n')) # How long the loan was running
     df.ttn = df.ttn.astype('int')
     df = df[df.ttn >= 3]
     df['tt'] = np.where(df.ttce >= 0, np.where(df.ttn < df.ttce, df.ttn, df.ttce), df.ttn)
+
     return  df
 
 
@@ -48,7 +51,7 @@ def print_apriori_probabilities(df, country, start_year, max_duration=60, rating
     :param start_year: will only inlcude loans originated in this year or later into analysis
     :param max_duration: only include loans whose duration is not greater than this
     :param ratings: a list specifying what ratings to include
-    :return: None
+    :return: Mean default intensities
     '''
     grouped3 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
                   & (df['LoanDuration'] <= max_duration)]['ProbabilityOfDefault'].groupby([df['Rating'], df['LoanDate'].dt.year])
@@ -93,6 +96,11 @@ def calculate_default_intensities_buckets(df, country, start_year):
     ee_default_probs = []
     ee_counts = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country)][
         'ProbabilityOfDefault'].groupby([ df['Rating'], df['LoanDate'].dt.year, df['LoanDuration']]).count()
+
+    ee_rr = df[(df['LoanDate'].dt.year >= start_year) & (df['Country'] == country) & (df.ttd != -1)][
+        ['EAD1', 'Recovered']].groupby([df['Rating'], df['LoanDate'].dt.year, df['LoanDuration']])
+    ee_rr_cnt = ee_rr.sum()
+
     grp_ee_dflt = grp_ee.count()
     for i in range(0, len(maturities) - 1):
         eedf = grp_ee_surv_cnt[i]
@@ -136,8 +144,12 @@ def calculate_default_intensities_buckets(df, country, start_year):
     annual_dflt_intensity = -avg_monthly_dflt_intensity
     annual_dflt_intensity = 1. - np.exp(annual_dflt_intensity * 12)
 
-    annual_dflt_intensity = pd.concat([annual_dflt_intensity, ee_counts], axis = 1)
-    annual_dflt_intensity.columns = ['Annual Default Intensity', '#']
+    annual_dflt_intensity = pd.concat([annual_dflt_intensity, ee_rr_cnt.Recovered / ee_rr_cnt.EAD1], axis=1)
+    annual_dflt_intensity = pd.concat([annual_dflt_intensity, ee_counts], axis=1)
+
+    annual_dflt_intensity.columns = ['Annual Default Intensity', 'Recovery Rate', '#']
+    annual_dflt_intensity['Recovery Rate'] = np.where(pd.isnull(annual_dflt_intensity['Recovery Rate']), '-----',
+                                                      (annual_dflt_intensity['Recovery Rate']*100.).round(2).astype(str) + '%')
 
     if len({'AA', 'A'} & set(annual_dflt_intensity.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
         loc1, loc2 = annual_dflt_intensity.index.levels[0].get_loc('AA'), annual_dflt_intensity.index.levels[0].get_loc('A')
@@ -213,7 +225,38 @@ apr_fi = print_apriori_probabilities(df, 'FI', 2017, ratings=['AA', 'A', 'B'])
 apostr_fi = fi.loc[(['AA','A', 'B'], [2017,2018,2019]), :]
 combined_fi = pd.concat([apr_fi, apostr_fi], axis=1)
 combined_fi['underestimate of default intensity']=combined_fi['Annual Default Intensity']-combined_fi['ProbabilityOfDefault']
-combined_fi.loc['AA', 'underestimate of default intensity'].plot(grid=True, title='Finland AA: underestimates of default intensity')
-combined_fi.loc['A', 'underestimate of default intensity'].plot(grid=True, title='Finland A: underestimates of default intensity')
-combined_fi.loc['B', 'underestimate of default intensity'].plot(grid=True, title='Finland B: underestimates of default intensity')
+combined_fi.loc['AA', 'underestimate of default intensity'].plot(grid=True, legend=True, x='Finland AA: underestimates of default intensity')
+combined_fi.loc['A', 'underestimate of default intensity'].plot(grid=True, x='Finland A: underestimates of default intensity')
+combined_fi.loc['B', 'underestimate of default intensity'].plot(grid=True, x='Finland B: underestimates of default intensity')
 combined_fi.loc[['AA', 'A'], 'underestimate of default intensity']
+
+
+ee_rrs = [
+    df[(df['LoanDate'].dt.year >= 2015) & (df['Country'] == 'EE') & (df.ttd != -1)][ # Calculating based on the loan issue date
+        ['EAD1', 'Recovered']].groupby([df['Rating'], df['LoanDate'].dt.year]),
+    df[(df['DefaultDate'].dt.year >= 2015) & (df['Country'] == 'EE') & (df.ttd != -1)][ # Calculating based on the loan default date
+        ['EAD1', 'Recovered']].groupby([df['Rating'], df['DefaultDate'].dt.year])]
+for ee_rr_cnt in [ee_rr.sum() for ee_rr in ee_rrs]:
+    ee_rr_cnt['Recovery Rate']=ee_rr_cnt.Recovered / ee_rr_cnt.EAD1
+    ee_rr_cnt=ee_rr_cnt.drop(['EAD1', 'Recovered'], axis=1)
+    ee_rr_cnt['Recovery Rate'] = np.where(pd.isnull(ee_rr_cnt['Recovery Rate']), '-----',
+                                                   (ee_rr_cnt['Recovery Rate']*100.).round(2).astype(str) + '%')
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        print(ee_rr_cnt)
+
+fi_rrs = [
+    df[(df['LoanDate'].dt.year >= 2015) & (df['Country'] == 'FI') & (df.ttd != -1)][ # Calculating based on the loan issue date
+        ['EAD1', 'Recovered']].groupby([df['Rating'], df['LoanDate'].dt.year]),
+    df[(df['DefaultDate'].dt.year >= 2015) & (df['Country'] == 'FI') & (df.ttd != -1)][ # Calculating based on the loan default date
+        ['EAD1', 'Recovered']].groupby([df['Rating'], df['DefaultDate'].dt.year])]
+for fi_rr_cnt in [fi_rr.sum() for fi_rr in fi_rrs]:
+    fi_rr_cnt['Recovery Rate']=fi_rr_cnt.Recovered / fi_rr_cnt.EAD1
+    fi_rr_cnt=fi_rr_cnt.drop(['EAD1', 'Recovered'], axis=1)
+    fi_rr_cnt['Recovery Rate'] = np.where(pd.isnull(fi_rr_cnt['Recovery Rate']), '-----',
+                                                   (fi_rr_cnt['Recovery Rate']*100.).round(2).astype(str) + '%')
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        print(fi_rr_cnt)
+
+
+ee_rr_cnt = df[(df['DefaultDate'].dt.year >= 2015) & (df['Country'] == 'EE') & (df.ttd != -1)][ # Calculating based on the loan default date
+        ['EAD1', 'Recovered']].groupby([df['Rating'], df['DefaultDate'].dt.year, df['LoanDuration']]).sum()
