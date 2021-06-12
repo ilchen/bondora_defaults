@@ -15,6 +15,14 @@ PrincipalRecovery + InterestRecovery
 jupyter notebook bondora_defaults.ipynb 
 ```
 
+You can also run the notebook in Google cloud. This way you don't need to install anything locally. This takes just a few seconds:
+1. Go to [Google Colaboratory](https://colab.research.google.com/notebooks/intro.ipynb#recent=true) in your browser
+2. In the modal window that appears select `GitHub`
+3. Enter the URL of this repository's notebook: `https://github.com/ilchen/bondora_defaults/blob/master/bondora_defaults.ipynb`
+4. Click the search icon
+5. Enjoy
+
+
 ## Notes
 There are three main functions in the script:
 * `print_apriori_probabilities` that analyses bondora's own a priory probabilities of default
