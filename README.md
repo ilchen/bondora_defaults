@@ -16,7 +16,7 @@ PrincipalRecovery + InterestRecovery
                EAD1
 ```
 
-## How to install using virtualenv
+## How to install using [virtualenv](https://docs.python.org/3/tutorial/venv.html)
 If you want to avoid mixing up packages in your global python installation, you can prepare the environment as follows:
 ```commandline
 python3 -m venv venv
