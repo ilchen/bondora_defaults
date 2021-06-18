@@ -16,6 +16,15 @@ PrincipalRecovery + InterestRecovery
                EAD1
 ```
 
+## How to install using virtualenv
+If you want to avoid mixing up packages in your global python installation, you can prepare the environment as follows:
+```commandline
+python3 -m venv venv
+source venv/bin/activate
+python3 -m pip install -r requirements.txt
+python3 -m pip install jupyter
+```
+This is not needed if you plan to run the notebook using Google Colabs as explained in the next section.
 ## How to run
 ```commandline
 jupyter notebook bondora_defaults.ipynb 
