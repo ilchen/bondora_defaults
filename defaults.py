@@ -20,6 +20,22 @@ def clean_df(df):
     #df.loc[:, 'ContractEndDate'] = pd.to_datetime(df['ContractEndDate'])
     return df
 
+def reorder_rows(k):
+    ''' This function rearranges the rows in a dataframe k to ensure AA loans come before A loans
+    :param k: a DataFrame representing an outcome of a grouping operation on a Bondora's loan portfolio
+    '''
+    if len({'AA', 'A'} & set(k.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
+        loc1, loc2 = k.index.levels[0].get_loc('AA'), k.index.levels[0].get_loc('A')
+        if loc1 > loc2:
+            idxes = list(k.index.levels[0])
+            idxes[loc1], idxes[loc2] = idxes[loc2], idxes[loc1]
+            new_idx = k.index.set_levels(idxes, 0)
+            k = k.reindex(new_idx)
+    return  k
+
+def print_df(df):
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(df)
+
 def extract_needed_columns(df):
     from pandas.tseries.offsets import MonthEnd
     from operator import attrgetter
@@ -43,34 +59,23 @@ def extract_needed_columns(df):
     return  df
 
 
-def print_apriori_probabilities(df, country, start_year, max_duration=60, ratings=('AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR')):
-    ''' This function analyses Bondora's own a priory default intensities that they calculated when pricing a loan
+def calculate_apriori_default_intensities(df, country, start_year, max_duration=60, ratings=('AA', 'A', 'B', 'C', 'D', 'E', 'F', 'HR')):
+    ''' This function analyses Bondora's own a-priory default intensities that they calculated when pricing a loan
     :param df: a DataFrame representing Bondora's loan portfolio
     :param country: the country loans issued in which to analyze,
             one of 'EE' for Estonia, 'FI' for Finland, 'ES' for Spain
     :param start_year: will only inlcude loans originated in this year or later into analysis
     :param max_duration: only include loans whose duration is not greater than this
     :param ratings: a list specifying what ratings to include
-    :return: Mean default intensities
+    :return: a tuple with mean default intensities, the first part returns averages per year,
+             the second per year and loan maturity
     '''
-    grouped3 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
+    grouped1 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
                   & (df['LoanDuration'] <= max_duration)]['ProbabilityOfDefault'].groupby([df['Rating'], df['LoanDate'].dt.year])
-    grouped4 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
+    grouped2 = df[(df['LoanDate'].dt.year >= start_year) & (df['Rating'].isin(ratings)) & (df['Country'] == country)
                   & (df['LoanDuration'] <= max_duration)]['ProbabilityOfDefault'].groupby([df['Rating'], df['LoanDate'].dt.year, df['LoanDuration']])
 
-    for group in [grouped3, grouped4]:
-        k = group.agg(['min', 'median', 'mean', 'max', 'std'])
-        k.columns.name = 'ProbabilityOfDefault'
-
-        if len({'AA', 'A'} & set(k.index.levels[0])) == 2: # make sure 'AA' loans will show up before 'A', if any
-            loc1, loc2 = k.index.levels[0].get_loc('AA'), k.index.levels[0].get_loc('A')
-            if loc1 > loc2:
-                idxes = list(k.index.levels[0])
-                idxes[loc1], idxes[loc2] = idxes[loc2], idxes[loc1]
-                new_idx = k.index.set_levels(idxes, 0)
-                k = k.reindex(new_idx)
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None): print(k)
-    return  grouped4.mean()
+    return  (grouped1.mean(), grouped2.mean())
 
 def calculate_default_intensities_buckets(df, country, start_year):
     ''' This function calculates the actual default intensities per per country, rating, year of issuance, and duration
@@ -200,9 +205,10 @@ df = clean_df(df)
 df = extract_needed_columns(df)
 
 # Analysis of Bondora's own a priori probabilities of default for different loans
-print_apriori_probabilities(df, 'EE', 2015)
-print_apriori_probabilities(df, 'EE', 2018, ratings=['AA', 'A'])
-print_apriori_probabilities(df, 'EE', 2018, ratings=['AA', 'A'], max_duration=12)
+calculate_apriori_default_intensities(df, 'EE', 2015)
+calculate_apriori_default_intensities(df, 'EE', 2018, ratings=['AA', 'A'])
+apr_ee_short, apr_ee = map(reorder_rows, calculate_apriori_default_intensities(df, 'EE', 2018, ratings=['AA', 'A'], max_duration=12))
+print_df(apr_ee_short)
 
 # Deriving probabilities of default based on actual defaults
 ee = calculate_default_intensities_buckets(df, 'EE', 2015)
@@ -212,7 +218,7 @@ fi = calculate_default_intensities_buckets(df, 'FI', 2015)
 ee.loc[(['AA','A','B'], [2017,2018]), :]
 ee['Annual Default Intensity'].loc[['AA','A','B'], [2017,2018]]
 
-apr_ee = print_apriori_probabilities(df, 'EE', 2017, ratings=['AA', 'A', 'B'])
+apr_ee = calculate_apriori_default_intensities(df, 'EE', 2017, ratings=['AA', 'A', 'B'])
 apostr_ee = ee.loc[(['AA','A', 'B'], [2017,2018,2019]), :]
 combined_ee = pd.concat([apr_ee, apostr_ee], axis=1)
 combined_ee['underestimate of default intensity']=combined_ee['Annual Default Intensity']-combined_ee['ProbabilityOfDefault']
@@ -221,7 +227,7 @@ combined_ee.loc['A', 'underestimate of default intensity'].plot(grid=True, title
 combined_ee.loc['B', 'underestimate of default intensity'].plot(grid=True, title='Estonia B: underestimates of default intensity')
 combined_ee.loc[['AA', 'A'], 'underestimate of default intensity']
 
-apr_fi = print_apriori_probabilities(df, 'FI', 2017, ratings=['AA', 'A', 'B'])
+apr_fi = calculate_apriori_default_intensities(df, 'FI', 2017, ratings=['AA', 'A', 'B'])
 apostr_fi = fi.loc[(['AA','A', 'B'], [2017,2018,2019]), :]
 combined_fi = pd.concat([apr_fi, apostr_fi], axis=1)
 combined_fi['underestimate of default intensity']=combined_fi['Annual Default Intensity']-combined_fi['ProbabilityOfDefault']
